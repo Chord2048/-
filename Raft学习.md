@@ -1,3 +1,5 @@
+[toc]
+
 ### Raft 三个子问题
 
 * 领导选举
@@ -20,7 +22,7 @@
 
 1. On all servers 
    	1. commitIndex 已知已提交的最高的日志条目的索引
-   	1. lastApplied 已经被应用到状态机的最高的日志条目的索引
+   	2. lastApplied 已经被应用到状态机的最高的日志条目的索引
 
 2. On leaders 选举后重新初始化
    1. nextIndex[] 对于每一台服务器，**下一条日志的索引**

@@ -12,7 +12,28 @@
 
 ![Screenshot 2024-03-25 at 18.35.33](Linux命令.assets/Screenshot 2024-03-25 at 18.35.33.png)
 
+total : Memtotal + SwapTotal 
 
+used physical memory : total - free - buffers - cache
+
+shared 
+
+| 字段       | 描述                                  | 关系                           |
+| ---------- | ------------------------------------- | ------------------------------ |
+| total      | memtotal and swap total               |                                |
+| used       | 占用的内存                            | total - free - cache - buffers |
+| free       | 没使用的内存                          | Memfree + swapfree             |
+| shared     | Memory used (mostly) by **tmpfs***    |                                |
+| buffers    | used by kernel buffer                 |                                |
+| cache      | page cache and slabs                  |                                |
+| available  | 估计有多少内存可以给新应用 不包括swap | 大概的 free + cache + buff     |
+| buff/cache |                                       |                                |
+
+tmpfs 是内存种的虚拟文件系统 类似于 proc，具有临时性、快速读写、动态收缩的特点，适合文件缓存和临时数据
+
+swap memory
+
+buffers/caches
 
 
 
@@ -24,9 +45,9 @@ df
 
 du
 
+VMstat
 
-
-
+![image-20240413170438126](C:\Users\19183\AppData\Roaming\Typora\typora-user-images\image-20240413170438126.png)
 
 网络
 
