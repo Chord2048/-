@@ -1,12 +1,37 @@
-零拷贝
+[toc]
+
+
+
+### 零拷贝
 
 mmap(内核缓冲区映射到用户缓冲区)+ write
 
-Sendfile 直接将内核缓冲区数据拷贝到socket缓冲区。
+
+
+Sendfile 直接将内核缓冲区数据拷贝到socket缓冲区。在内核空间完成拷贝
+
+如果网卡支持，可以 DMA 拷贝到内核缓冲区，然后 SG-DMA拷贝到网卡。不经过CPU 所以是零拷贝 
+
+RDMA 呢?
+
+```c++
+```
 
 
 
-如果网卡支持，可以 DMA 拷贝到内核缓冲区，然后 SG-DMA拷贝到网卡。不经过CPU 所以是零拷贝
+Splice
+
+```c++
+#include <fcntl.h>
+// 两个文件描述符之间移动数据,其中一个是管道描述符
+ssize_ splice(
+    int fd_in, loff_t* off_in, 
+    int fd_out, loff_t* off_out, 
+    size_t len, 
+    unsigned int flags);
+```
+
+
 
 
 

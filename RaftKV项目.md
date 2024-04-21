@@ -495,19 +495,67 @@ ClientID + CommandID 标识。
 
 ##### 线性一致性的写 KV
 
-
-
-
+// TODO
 
 
 
 ### RPC怎么设计？
+
+总体的特征: TCP 长连接,同步阻塞
+
+### RPC Channel
+
+// TODO 他这个 socket 有点垃圾
+
+```c++
+// 继承自 google::protobuf::RpcChannel
+
+class MprpcChannel : public google::protobuf::RpcChannel {
+ public:
+  // 所有通过stub代理对象调用的rpc方法，都走到这里了，统一做rpc方法调用的数据数据序列化和网络发送 那一步
+  // 重载 CallMethod
+    void CallMethod(const google::protobuf::MethodDescriptor *method, google::protobuf::RpcController *controller,
+                  const google::protobuf::Message *request, google::protobuf::Message *response,
+                  google::protobuf::Closure *done) override;
+  MprpcChannel(string ip, short port, bool connectNow);
+
+ private:
+  int m_clientFd;
+  const std::string m_ip;  //保存ip和端口，如果断了可以尝试重连
+  const uint16_t m_port;
+    
+  /// @brief 连接ip和端口,并设置m_clientFd 质朴的 socket 连接
+  /// @param ip ip地址，本机字节序
+  /// @param port 端口，本机字节序
+  /// @return 成功返回空字符串，否则返回失败信息
+  bool newConnect(const char *ip, uint16_t port, string *errMsg);
+};
+
+```
+
+
+
+
+
+
+
+
 
 #### 日志压缩
 
 采取快照（snapshot）的方式来压缩日志，有点像 rdb。
 
 
+
+#### Raft 读写请求
+
+Raft对只读操作的处理办法是
+
+1. 只读请求最终也必须依靠Leader来执行，如果是Follower接收请求的，那么必须转发
+2. **记录下当前日志的commitIndex => readIndex**
+3. 执行读操作前要向集群广播一次心跳，并得到majority的反馈
+4. **等待状态机的applyIndex移动过readIndex**
+5. 通过**查询状态机**来执行读操作并返回客户端最终结果。
 
 
 
@@ -863,6 +911,252 @@ TODO 接下来呢？
 
 #### 跳表怎么实现
 
+##### 节点定义
+
+```c++
+// Class template to implement node
+template <typename K, typename V>
+class Node {
+ public:
+  Node() {}
+  Node(K k, V v, int);
+  ~Node();
+
+  K get_key() const;
+  V get_value() const;
+  void set_value(V);
+  // Linear array to hold pointers to next node of different level
+  Node<K, V> **forward;
+
+  int node_level;
+ private:
+  K key;
+  V value;
+};
+
+// Ctor
+template <typename K, typename V>
+Node<K, V>::Node(const K k, const V v, int level) {
+  this->key = k;
+  this->value = v;
+  this->node_level = level;
+
+  // level + 1, because array index is from 0 - level
+  this->forward = new Node<K, V> *[level + 1];
+  // Fill forward array with 0(NULL)
+  memset(this->forward, 0, sizeof(Node<K, V> *) * (level + 1));
+};
+
+```
+
+##### 跳表类定义
+
+```c++
+template <typename K, typename V>
+class SkipList {
+ public:
+  SkipList(int maximum_level);
+  ~SkipList();
+  int get_random_level();				// 产生一个 level
+  Node<K, V> *create_node(K, V, int);	// key, value, level
+  int insert_element(K, V);				// 插入
+  void display_list();
+  bool search_element(K, V &value);		// 搜索		
+  void delete_element(K);				// 删除
+  void insert_set_element(K &, V &);	// 插入
+  std::string dump_file();				// 落盘
+  void load_file(const std::string &dumpStr);	// 加载
+  
+  //递归删除节点
+  void clear(Node<K, V> *);
+  int size();
+
+ private:
+  void get_key_value_from_string(const std::string &str, std::string *key, std::string *value);
+  bool is_valid_string(const std::string &str);
+
+ private:
+  // Maximum level of the skip list
+  int _max_level;
+  // current level of skip list
+  int _skip_list_level;
+  // pointer to header node
+  Node<K, V> *_header;
+
+  // file operator
+  std::ofstream _file_writer;
+  std::ifstream _file_reader;
+
+  // skiplist current element count
+  int _element_count;
+  std::mutex _mtx;  // mutex for critical section
+};
+
+
+// ctor
+// construct skip list
+template <typename K, typename V>
+SkipList<K, V>::SkipList(int max_level) {
+  this->_max_level = max_level;
+  this->_skip_list_level = 0;
+  this->_element_count = 0;
+  // create header node and initialize key and value to null
+  K k;
+  V v;
+  // 创建一个 header
+  this->_header = new Node<K, V>(k, v, _max_level);
+};
+```
+
+##### 节点有多少层?
+
+```c++
+// p = 0.5
+template <typename K, typename V>
+int SkipList<K, V>::get_random_level() {
+  int k = 1;
+  while (rand() % 2) {
+    k++;
+  }
+  k = (k < _max_level) ? k : _max_level;
+  return k;
+};
+```
+
+##### Search
+
+```c++
+template <typename K, typename V>
+bool SkipList<K, V>::search_element(K key, V &value) {
+  Node<K, V> *current = _header;
+
+  // start from highest level of skip list
+  for (int i = _skip_list_level; i >= 0; i--) {  // 先向下
+    while (current->forward[i] && current->forward[i]->get_key() < key) { // 再向右
+      current = current->forward[i];
+    }
+  }
+    
+  // current 到达了底层最后一个小于 key 的节点
+  // reached level 0 and advance pointer to right node, which we search
+  current = current->forward[0];	
+
+  // if current node have key equal to searched key, we get it
+  if (current && current->get_key() == key) {
+    value = current->get_value();
+    std::cout << "Found key: " << key << ", value: " << current->get_value() << std::endl;
+    return true;
+  }
+
+  std::cout << "Not Found Key:" << key << std::endl;
+  return false;
+}
+```
+
+Insert
+
+```c++
+template <typename K, typename V>
+int SkipList<K, V>::insert_element(const K key, const V value) {
+  _mtx.lock();
+  Node<K, V> *current = this->_header;
+  // create update array and initialize it
+  // update is array which put node that the node->forward[i] should be operated later
+  Node<K, V> *update[_max_level + 1];
+  memset(update, 0, sizeof(Node<K, V> *) * (_max_level + 1));
+
+  // start form highest level of skip list
+  for (int i = _skip_list_level; i >= 0; i--) {	// 向下
+    while (current->forward[i] != NULL && current->forward[i]->get_key() < key) { // 向右
+      current = current->forward[i];
+    }
+    update[i] = current; // 每一层,找到最后一个小于 key 的位置
+  }
+
+  // reached level 0 and forward pointer to right node, which is desired to insert key.
+  // 插入位置
+  current = current->forward[0];
+
+  // if current node have key equal to searched key, we get it
+  if (current != NULL && current->get_key() == key) {
+    std::cout << "key: " << key << ", exists" << std::endl;
+    _mtx.unlock();
+    return 1;
+  }
+
+  // if current is NULL that means we have reached to end of the level
+  // if current's key is not equal to key that means we have to insert node between update[0] and current node
+  if (current == NULL || current->get_key() != key) {
+    // Generate a random level for node
+    int random_level = get_random_level();
+    // If random level is greater thar skip list's current level, initialize update value with pointer to header
+    if (random_level > _skip_list_level) {
+      for (int i = _skip_list_level + 1; i < random_level + 1; i++) {
+        update[i] = _header;
+      }
+      _skip_list_level = random_level;
+    }
+
+    // create new node with random level generated
+    Node<K, V> *inserted_node = create_node(key, value, random_level);
+
+    // insert node
+    for (int i = 0; i <= random_level; i++) {
+      inserted_node->forward[i] = update[i]->forward[i];
+      update[i]->forward[i] = inserted_node;
+    }
+    std::cout << "Successfully inserted key:" << key << ", value:" << value << std::endl;
+    _element_count++;
+  }
+  _mtx.unlock();
+  return 0;
+}
+```
+
+删除元素
+
+```c++
+// Delete element from skip list
+template <typename K, typename V>
+void SkipList<K, V>::delete_element(K key) {
+  _mtx.lock();
+  Node<K, V> *current = this->_header;
+  Node<K, V> *update[_max_level + 1];
+  memset(update, 0, sizeof(Node<K, V> *) * (_max_level + 1));
+
+  // start from highest level of skip list
+  // update 记录某一层前一个节点
+  for (int i = _skip_list_level; i >= 0; i--) {
+    while (current->forward[i] != NULL && current->forward[i]->get_key() < key) {
+      current = current->forward[i];
+    }
+    update[i] = current;
+  }
+	
+  // current 指向删除位置
+  current = current->forward[0];
+  if (current != NULL && current->get_key() == key) {
+    // start for lowest level and delete the current node of each level
+    for (int i = 0; i <= _skip_list_level; i++) {
+      // if at level i, next node is not target node, break the loop.
+      if (update[i]->forward[i] != current) break;
+      update[i]->forward[i] = current->forward[i];
+    }
+
+    // Remove levels which have no elements 这里要删除空的层数
+    while (_skip_list_level > 0 && _header->forward[_skip_list_level] == 0) {
+      _skip_list_level--;
+    }
+    delete current;
+    _element_count--;
+  }
+  _mtx.unlock();
+  return;
+}
+```
+
+
+
 #### 什么时候落盘
 
 #### 落盘文件和快照怎么配合？
@@ -986,6 +1280,12 @@ ApplyIndex 持久化的好处
 
 ##### 说一下宕机恢复的过程
 
+
+
+
+
+
+
 ##### 为什么raft里leader要同时保存nextidex和matchindex数组，只用 nextIndex 可以吗
 
 `nextIndex[]` 数组帮助 Leader 知道下一步应该发送哪个日志条目给 Follower。
@@ -1016,6 +1316,62 @@ ApplyIndex 持久化的好处
 
 #### 有没有对性能测试
 
+单个客户端三个节点垃圾虚拟机上跑了测试
+
+**只读操作也必须经过majority确认** <- 网络分区
+
+put 120 puts/s
+
+get 180 gets/s
+
+基本都是 RPC 用的时间,阻塞在了 recv 和 send 上.
+
+### 性能优化
+
+有空读一下这个
+
+https://juejin.cn/post/6906508138124574728#heading-1
+
+#### 读优化
+
+##### Read Index
+
+与 Raft Log Read 相比，Read Index **省掉了同步 log 的开销**，能够**大幅提升**读的**吞吐**，**一定程度上降低**读的**时延**。其大致流程为：
+
+1. Leader 在收到客户端读请求时，记录下当前的 commit index，称之为 **read index**。
+2. Leader 向 followers 发起一次心跳包，这一步是为了确保领导权，避免网络分区时少数派 leader 仍处理请求。
+3. 等待状态机**至少**应用到 read index（即 apply index **大于等于** read index）。
+4. 执行读请求，将状态机中的结果返回给客户端。
+
+这里第三步的 apply index **大于等于** read index 是一个关键点。因为在该读请求发起时，我们将当时的 commit index 记录了下来，只要使客户端读到的内容在该 commit index 之后，那么结果**一定都满足线性一致**（如不理解可以再次回顾下前文线性一致性的例子以及2.2中的问题一）。
+
+只发心跳确认leader身份, 而不用等新的 log 的 apply
+
+##### Lease Read
+
+ 进一步省去了网络交互开销，因此更能**显著降低**读的**时延**。
+
+基本思路是 leader 设置一个**比选举超时（Election Timeout）更短的时间作为租期**，在租期内我们可以相信其它节点一定没有发起选举，集群也就一定不会存在脑裂，所以在这个时间段内我们直接读主即可，而非该时间段内可以继续走 Read Index 流程，Read Index 的心跳包也可以为租期带来更新。
+
+Lease Read 可以认为是 Read Index 的时间戳版本，额外依赖时间戳会为算法带来一些不确定性，如果时钟发生漂移会引发一系列问题，因此需要谨慎的进行配置。
+
+##### Follower Read
+
+在前边两种优化方案中，无论我们怎么折腾，核心思想其实只有两点：
+
+- 保证在读取时的最新 commit index 已经被 apply。
+- 保证在读取时 leader 仍拥有领导权。
+
+这两个保证分别对应2.2节所描述的两个问题。
+
+其实无论是 Read Index 还是 Lease Read，最终目的都是为了解决第二个问题。换句话说，读请求最终一定都是由 leader 来承载的。
+
+那么读 follower 真的就不能满足线性一致吗？其实不然，这里我们给出一个可行的读 follower 方案：**Follower 在收到客户端的读请求时，向 leader 询问当前最新的 commit index，反正所有日志条目最终一定会被同步到自己身上，follower 只需等待该日志被自己 commit 并 apply 到状态机后，返回给客户端本地状态机的结果即可**。这个方案叫做 **Follower Read**。
+
+注意：Follower Read 并不意味着我们在读过程中完全不依赖 leader 了，在保证线性一致性的前提下完全不依赖 leader 理论上是不可能做到的。
+
+
+
 
 
 ### 测试相关
@@ -1037,6 +1393,10 @@ ApplyIndex 持久化的好处
 ### 存储相关
 
 ##### 为什么跳表
+
+* 范围查询
+* 实现简单,调整稳定可以调整层数参数
+* 
 
 ##### 跳表的对比
 
