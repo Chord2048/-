@@ -41,7 +41,7 @@ eth0 eth0:1 和eth0.1三者的关系对应于**物理网卡**、**子网卡**、
 
 * host
 
-  * 用于 DNS 查询
+  * **用于 DNS 查询**
 
   * -t Type
 
@@ -57,7 +57,24 @@ eth0 eth0:1 和eth0.1三者的关系对应于**物理网卡**、**子网卡**、
     66.68.242.110.in-addr.arpa domain name pointer baidu.com.
     ```
 
+* Linux 修改 DNS
+  
+  * 修改本地 DNS 解析 添加特定规则/
+    ```
+    vi /etc/hosts
+    // 可以添加规则
+    ```
+  
+  * 修改系统默认的 DNS 配置 **修改 /etc/resolv.conf**
+    ```
+    vi /etc/resolv.conf
+    ```
+  * 网卡配置文件
+    ```
+    vi /etc/sysconfig/network-scripts/ifcfg-eth0
+    ```
 * netstat 
+
   * -n 展示地址
   * -l listen
   * -t tcp
@@ -94,7 +111,7 @@ ARP协议
 
 ### API
 
-创建 Socket
+#### 创建 Socket
 
 ```c++
 #include <sys/types.h>
@@ -103,7 +120,7 @@ int socket(int domain, int type, int protocol);
 int fd = socket(PF_INET, SOCK_STREAM, 0);
 ```
 
-bind 为socket 命名,绑定一个地址
+#### bind 为socket 命名,绑定一个地址
 
 ````c++
 bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -123,7 +140,7 @@ address.sin_port = htons(port);
 bind(fd, (sockaddr*)&address, sizeof(address));
 ```
 
-监听 listen
+#### 监听 listen
 
 ```c++
 int listen(int sockfd, int backlog); // 创建监听队列,设置最大连接数
@@ -131,7 +148,7 @@ int listen(int sockfd, int backlog); // 创建监听队列,设置最大连接数
 listen(fd, 5);
 ```
 
-接受 accept
+#### 接受 accept
 
 ```c++
 int accept(int sockfd, const struct sockaddr *addr, socklen_t* addrlen);
@@ -142,21 +159,21 @@ int conn_fd = accept(fd, (struct sockaddr *)&client_addr, *client_addrlength);
 // accept 是非阻塞的,只是从监听队列里取一个出来
 ```
 
-连接  connect
+#### 连接  connect
 
 ```c++
 int connect(int sockfd, const struct sockaddr* serv_addr, skcklen_t addrlen);
 //
 ```
 
-关闭 close
+#### 关闭 close
 
 ```c++
 int close(fd); // 只是引用计数--
 int shutdown(int fd, int howto); // 直接关闭,可以指定关闭读/写端
 ```
 
-设置 socket 选项 getsockopt setsockopt
+#### 设置 socket 选项 getsockopt setsockopt
 
 ```c++
 // 重用本地地址
@@ -169,3 +186,10 @@ setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 // SO_RCVBUF 接收缓冲区
 ```
 
+
+
+#### mmap
+
+
+
+#### 
