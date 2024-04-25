@@ -242,9 +242,9 @@ doheartBeat 开启多线程调用 SendAppendEntries
    1. term：：当前节点的Term，避免重复到一个Term，可能会遇到重复投票等问题。
    2. votedfor ： 当前Term给谁投过票，避免故障后重复投票。
    3. m_logs
-2. kvDb的快照
-   1. m_lastSnapshotIncludeIndex 快照最新包含的日志 Index
-   2. m_lastSnapshotIncludeTerm 快照最新包含的日志 term
+2. **kvDb的快照**
+   1. **m_lastSnapshotIncludeIndex** 快照最新包含的日志 Index
+   2. **m_lastSnapshotIncludeTerm** 快照最新包含的日志 term
 
 Snapshot是kvDb的快照，也可以看成是日志，因此:**全部的日志 = m_logs + snapshot**
 
@@ -532,14 +532,6 @@ class MprpcChannel : public google::protobuf::RpcChannel {
 };
 
 ```
-
-
-
-
-
-
-
-
 
 #### 日志压缩
 
@@ -1031,8 +1023,8 @@ bool SkipList<K, V>::search_element(K key, V &value) {
   Node<K, V> *current = _header;
 
   // start from highest level of skip list
-  for (int i = _skip_list_level; i >= 0; i--) {  // 先向下
-    while (current->forward[i] && current->forward[i]->get_key() < key) { // 再向右
+  for (int i = _skip_list_level; i >= 0; i--) {  // 再向下
+    while (current->forward[i] && current->forward[i]->get_key() < key) { // 先向右
       current = current->forward[i];
     }
   }
@@ -1066,8 +1058,8 @@ int SkipList<K, V>::insert_element(const K key, const V value) {
   memset(update, 0, sizeof(Node<K, V> *) * (_max_level + 1));
 
   // start form highest level of skip list
-  for (int i = _skip_list_level; i >= 0; i--) {	// 向下
-    while (current->forward[i] != NULL && current->forward[i]->get_key() < key) { // 向右
+  for (int i = _skip_list_level; i >= 0; i--) {	// 再向下
+    while (current->forward[i] != NULL && current->forward[i]->get_key() < key) { // 先向右
       current = current->forward[i];
     }
     update[i] = current; // 每一层,找到最后一个小于 key 的位置
@@ -1416,8 +1408,6 @@ Lease Read 可以认为是 Read Index 的时间戳版本，额外依赖时间戳
 这里回答一下**火焰图**的基本使用就差不多了，如果大家没有使用过的话推荐大家去看篇博文入门了解基本操作和原理（探针），
 
 我这里给出一个初步的结果，如果只有一个客户端：**并发几十**，大部分的损耗在 RPC 这边。多个客户端的结果没有测试。
-
-
 
 现在的测试还比较简单，在五个 raft 集群上测。
 

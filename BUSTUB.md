@@ -26,7 +26,7 @@ A schedule is **conflict serializable** iff its **dependency graph** is acyclic
 
 
 
-## Project 4、
+## Project 4
 
 https://zhuanlan.zhihu.com/p/600001968
 
@@ -41,6 +41,8 @@ https://www.cnblogs.com/looking-for-zihuatanejo/p/17529739.html#:~:text=%E4%BB%A
 | S-LOCK |      |      |
 | X-LOCK |      |      |
 |        |      |      |
+
+
 
 
 
@@ -62,6 +64,18 @@ https://www.cnblogs.com/looking-for-zihuatanejo/p/17529739.html#:~:text=%E4%BB%A
 
 
 
+#### 2PL 存在的问题：
+
+- 可能出现**级联回滚** —— 解决方案：**严格**二阶段封锁协议 (**Strict 2PL, S-2PL**)
+  - 提交了才能释放互斥锁
+- 可能出现**脏读** —— 解决方案：**强**二阶段封锁协议 (**Strong Strict 2PL, SS-2PL，又称 Rigorous 2PL**)
+  - 提交了才能释放所有锁
+- 可能导致死锁 —— 解决方案：死锁检测和预防
+
+
+
+
+
 严格两阶段锁 Rigorous 2PL
 
 **每个事务在结束之前，其写过的数据不能被其它事务读取或者重写**
@@ -74,24 +88,26 @@ The txn is only allowed to release locks after it has ended (i.e., committed or 
 
 ![image-20240416134015855](C:\Users\19183\AppData\Roaming\Typora\typora-user-images\image-20240416134015855.png)
 
-意向锁：快速判断下层是不是有节点上锁了
+意向锁：**快速判断下层是不是有节点上锁了**
 
-IX 意向互斥
+**IX 意向互斥**
 
-IS 意向共享
+**IS 意向共享**
 
-Shared+Intention-Exclusive  SIX锁
+**Shared+Intention-Exclusive  SIX锁**
+
+
 
 SIX 锁 = S 锁 + IX 锁
 
-* 对目标表加上 SIX 锁后，S 锁这一属性保证了**别的事务能知道我们要读取目标表的所有 record**，它们就**不会去并发地更新**任意的 record；
+* 对**目标表**加上 SIX 锁后，S 锁这一属性保证了**别的事务能知道我们要读取目标表的所有 record**，它们就**不会去并发地更新**任意的 record；
 * IX 锁这一属性保证了别的事务能**知道我们要更新目标表的一部分** record，它们就**不会去并发地读取所有的 record**。
 
 
 
-**为什么要有SIX锁？**
+**为什么要有SIX锁？**读所有，写一部分。
 
-事务读取所有记录，并且改一部分
+事务**读取所有记录，并且改一部分**
 
 如果没有SIX锁，只能对表加X（低并发），或者所有读记录加S，写记录加X（消耗高）
 
@@ -106,7 +122,7 @@ SIX 锁 = S 锁 + IX 锁
 - 要在节点上获取 S（共享锁）或 IS（意向-共享锁），事务必须至少持有其父节点上的 IS（意向-共享锁）。
 - 要在节点上获取 X（独占锁）、IX（意向-独占锁）或 SIX（共享+意向-独占锁），事务必须至少持有其父节点上的 IX（意向-独占锁）。
 
-同时，意向锁（IS 和 IX）的使用可以优化锁管理，减少不必要的锁检查，提高并发控制的效率。
+同时，意向锁（IS 和 IX）的使用可以优化锁管理，**减少不必要的锁检查**，提高并发控制的效率。
 
 
 
@@ -118,13 +134,12 @@ SIX 锁 = S 锁 + IX 锁
 
 (1):*REPEATABLE_READ* 
 
-1. **shrinking 阶段不允许加任何锁。** 强2PL，abort或者commit的时候统一解锁。
-2. 
+1. **shrinking 阶段不允许加任何锁。** 强2PL （strong strict），abort或者commit的时候统一解锁。
 
 (2): READ_COMMITTED
 
 1. **shrinking 阶段只允许加S IS锁**。不可重复读。
-2. 提前释放 S 锁（GROWING），所以会两次读到不一样的数据
+2. **提前释放 S 锁（GROWING）**，所以会两次读到不一样的数据
 
 (3):*READ_UNCOMMITTED* 只允许X IX锁。读的时候不用**加读锁**，直接读。
 
@@ -152,9 +167,17 @@ SIX 锁 = S 锁 + IX 锁
 
 
 
+#### 锁的种类？
+
+X，S，SIX，IS，IX 五种
+
 #### abort 怎么处理？
 
+
+
 #### 锁管理器怎么实现？
+
+![img](https://pic4.zhimg.com/80/v2-12bde2c60081ddf8b60bd765cb55ebe7_720w.webp)
 
 ![image-20230701160645599](https://img2023.cnblogs.com/blog/2174405/202307/2174405-20230705203205342-15130024.png)
 
@@ -169,9 +192,22 @@ SIX 锁 = S 锁 + IX 锁
 - 直接删除队列中的的 request
 - 根据隔离级别**更新事务状态**
 
+**详细的流程：**
+
+lock manager处理锁请求流程：
+
+- 当一个新的加锁请求到达时，如果**请求队列存在**，他在对应资源的请求队列**末尾**添加一条记录，否则创建一个新的队列。
+
+- - 如果资源没有没有被锁住，那么授予锁。
+  - 如果已经有事务获取了锁，检查锁的兼容性，如果**兼容并且先前锁请求都被授予，才能获取锁**，否则只能等待。**这里保证了锁的请求不会饥饿。**
+
+- 当解锁请求到达时，lock manger把对应的加锁记录从请求队列中移除。检查后续等待获取请求能否被授予锁。
+
+
+
 可重复读：            解开 s/x锁都应该将事务状态设置为  SHRINKING 
 
-读提交：            解锁 × 锁应将事务状态设置为 SHRINKING            **解锁 s 锁不影响事务状态**。
+读提交：            **解锁 × 锁应将事务状态设置为 SHRINKING**            **解锁 s 锁不影响事务状态**。
 
  读未提交：            解锁 X 锁事务状态设置为 SHRINKING            **不允许使用 S 锁**            在此隔离级别下解锁S锁的行为未定义
 

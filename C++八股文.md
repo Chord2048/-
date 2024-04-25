@@ -568,6 +568,15 @@ void *memcpy(void *str1, const void *str2, size_t n);
 
 用处：异步回调，事件处理，观察者模式
 
+#### weak_ptr
+
+* weak_ptr是为了配合shared_ptr而引入的一种智能指针，因为它不具有普通指针的行为，**没有重载`operator*`和`->`**,它的最大作用在于协助shared_ptr工作，像旁观者那样观测资源的使用情况。
+* weak_ptr可以从一个shared_ptr或者另一个weak_ptr对象构造，获得资源的观测权。但weak_ptr没有共享资源，它的构造不会引起指针引用计数的增加。
+* 使用weak_ptr的成员函数`use_count()`可以观测资源的引用计数，另一个成员函数`expired()`的功能等价于`use_count()==0`,但更快，表示被观测的资源(也就是shared_ptr的管理的资源)已经不复存在。
+* weak_ptr可以使用一个非常重要的成员函数`lock()`从被观测的shared_ptr获得一个可用的shared_ptr对象， 从而操作资源。但当`expired()==true`的时候，`lock()`函数将返回一个存储空指针的shared_ptr。
+
+
+
 
 
 ## 调试相关
