@@ -34,18 +34,6 @@ https://www.cnblogs.com/looking-for-zihuatanejo/p/17529739.html#:~:text=%E4%BB%A
 
 
 
-锁的种类
-
-|        |      |      |
-| ------ | ---- | ---- |
-| S-LOCK |      |      |
-| X-LOCK |      |      |
-|        |      |      |
-
-
-
-
-
 ### 两阶段锁
 
 2PL 用来决定事务能不能访问对象，不需要提前直到查询计划。
