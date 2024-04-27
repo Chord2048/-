@@ -535,7 +535,50 @@ void *memcpy(void *str1, const void *str2, size_t n);
 
 ## 异常处理
 
-1. try throw catch  
+1. try throw catch
+
+
+
+
+
+#### COREDUMP  
+
+http://sunyongfeng.com/201609/programmer/tools/coredump
+
+```bash
+ulimit -c // 查看当前core 大小限制
+ulimit -c unlimited // 解除限制
+cat /etc/security/limits.conf // 查看限制
+cat /proc/sys/kernel/core_pattern // 查看 core pattern 
+// %t 时间戳
+// %e 程序名
+// %s 信号
+// %p 进程号
+
+// GDB 调试 coredump 
+gdb a.out core-a.out
+
+```
+
+* bt 查看调用栈
+
+* f n 查看某个栈帧
+
+* info
+
+  * info frame
+  * info registers
+  * info args
+  * info locals
+  * info threads 查看线程
+
+  
+
+  
+
+  
+
+  
 
 ## 编译连接
 
@@ -560,6 +603,58 @@ void *memcpy(void *str1, const void *str2, size_t n);
 
 `.bss`节在目标文件和可执行文件中不占用文件的空间，但是它在装载时占用地址空间
 
+
+
+
+
+TODO
+
+#### 静态链接和动态链接
+
+* 静态链接
+  * 符号解析
+  * 重定位
+    * 作用：为了生成位置无关代码。这样共享库就可以放在任意的位置了。
+    * 相对重定位条目
+      * PC + 偏移量
+    * 绝对重定位条目
+      * 绝对地址
+* 动态链接
+  * 为了解决静态库的问题
+    * 静态库更新程序需要重新链接
+    * 共享代码节约资源
+  * 一个库只有一个文件
+  * 在内存中共享库的 .text 节可以被共享
+  * 需要一个动态链接器
+  * ![img](http://oss.interviewguide.cn/img/202205212343182.png)
+
+#### 动态编译和静态编译
+
+* 静态编译和动态编译是两种不同的编译方式，用于生成可执行文件。让我为您详细解释一下：
+  1. **静态编译**：
+     - 在静态编译时，编译器将程序**与其所有依赖项（包括库）链接在一起**，形成一个单独的可执行文件。
+     - 这个可执行文件包含了所有代码和数据，因此它是一个完全独立的二进制文件。
+     - 静态编译的优点是可执行文件**不依赖于外部动态链接库**，因此在运行时不需要加载其他库文件。
+     - 缺点是可执行文件体积较大，且编译速度较慢。
+  2. **动态编译**：
+     - 在动态编译时，只创建程序的框架，而不将所有依赖项包含在可执行文件中。
+     - 动态编译的**可执行文件需要附带一个动态链接库**，在执行时，需要调用其对应动态链接库中的命令。
+     - 优点是**缩小了可执行文件本身的体积，加快了编译速度**，节省了系统资源。
+     - 缺点是需要安装对应的运行库，否则无法运行动态编译的可执行文件。
+
+#### 并发编程相关
+
+### C++ 的锁
+
+* 读写锁
+* 互斥锁
+  * 互斥机制
+* 条件变量
+  * 一种同步机制
+* 自旋锁
+
+
+
 ## 智能指针相关
 
 #### 1. enable_shared_from_this
@@ -567,6 +662,10 @@ void *memcpy(void *str1, const void *str2, size_t n);
 允许一个类继承自它，以便获得指向 `this` 的 `shared_ptr` 
 
 用处：异步回调，事件处理，观察者模式
+
+**实现方法**
+
+
 
 #### weak_ptr
 
