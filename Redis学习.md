@@ -1,4 +1,4 @@
-Redis 内存数据库 MySQL缓存
+Redis **内存数据库** MySQL缓存
 
 支持多种数据类型
 
@@ -16,19 +16,130 @@ Lua脚本
 
 
 
+## 数据类型
+
 五种类型
 
-string 字符串、整数或者浮点数
+1. string 字符串 
+2. list 链表
+3. set 无序集合
+4. zset 有序
+5. hash table 散列表
+6. 新加的
+   1. bitmap
+   2. hyperlog
+   3. geo
+   4. stream
 
-list 字符串的链表
+### string 字符串、整数或者浮点数
 
-set 无序集合
-
-zset 有序存储键值对
-
-hash tales 无序三列表
+底层数据结构
 
 
+
+* int
+* sds (short for simple dynamic string)
+  * sds 可以**存二进制**数据。
+    * 可以存图片、音频、文件
+    * **二进制安全**
+      * 不会因为字符串本身有 '\0' 截断
+  * **长度由 len 属性给定**
+    * **O(1)** 取得字符串长度
+    * **不会造成缓冲区溢出**
+  * **自动扩容 sdsMakeRoomFor**
+    * **空间预分配**
+      * 分多 1mb 空间
+    * **惰性释放**
+      * 字符串缩短时只减小 len
+
+内部编码
+
+redisObject 记录 type, encoding, ptr
+
+* int
+
+  * 如果 ptr 字段放得下，直接放在 ptr
+
+  ![img](https://cdn.xiaolincoding.com/gh/xiaolincoder/redis/%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/int.png)
+
+* raw
+
+  * ![img](https://cdn.xiaolincoding.com/gh/xiaolincoder/redis/%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/raw.png)
+
+* embstr （适合短字符串）
+
+  * 短串直接把 SDS 接在 object 后面。SDS 块记录长度、缓冲区指针和没用的长度
+
+    * ~~~c++
+      struct sdshdr {
+          //记录buf数组中已使用字节的数量
+          //等于SDS所保存字符串的长度
+          unsigned int len;
+          //记录buf数组中未使用字节的数量
+          unsigned int free;
+          //char数组，用于保存字符串
+          char buf[];
+      };
+      
+      // 共有五种类型的SDS（长度小于1字节、1字节、2字节、4字节、8字节）
+      // len 和 free 只需要 1、2、4、8 bytes
+      
+      ~~~
+
+  * ![img](https://cdn.xiaolincoding.com/gh/xiaolincoder/redis/%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/embstr.png)
+
+  * 优点：
+
+    * 一次分配
+    * 一次释放
+    * 缓存优势
+
+  * 缺点
+
+    * 增长时需要重新分配空间
+
+
+
+一些特征：
+
+* 字符串最长 512 MB，因为 2^32 = 4 bilion 
+
+### list 字符串的链表
+
+实现
+
+* 双向链表
+* 压缩链表：元素小的
+* quicklist
+
+### set 无序集合
+
+### zset 有序存储键值对
+
+### hash tables 无序三列表
+
+
+
+
+
+#### 底层数据结构
+
+1. 压缩列表
+
+![img](https://cdn.xiaolincoding.com//mysql/other/a3b1f6235cf0587115b21312fe60289c.png)
+
+2. 整数集合
+
+3. 跳表
+4. quickList
+
+![img](https://cdn.xiaolincoding.com//mysql/other/f46cbe347f65ded522f1cc3fd8dba549.png)
+
+5. listPack
+
+   没有连锁更新问题，只保存当前节点的长度。
+
+   ![img](https://cdn.xiaolincoding.com//mysql/other/c5fb0a602d4caaca37ff0357f05b0abf.png)
 
 
 
@@ -151,4 +262,158 @@ Write Back（写回）策略。更新数据的时候，只更新缓存，同时�
 ### RDB
 
 save & bgsave 阻塞/fork一个子进程
+
+
+
+
+
+### redis 过期淘汰和内存淘汰
+
+#### 过期淘汰
+
+Redis 是可以对 key 设置过期时间的，因此需要有相应的机制将已过期的键值对删除，而做这个工作的就是过期键值删除策略。
+
+
+
+##### 设置过期时间
+
+* expire 设置过期时间或者过期时间戳
+* persist 取消过期时间
+
+
+
+##### 怎么知道有没有过期？
+
+过期字典
+
+* 不在过期字典，直接读
+* 在，检查时间，如果比系统时间大就判定 key 过期。
+
+
+
+##### 过期淘汰策略
+
+* 定时删除
+  * **在设置 key 的过期时间时，同时创建一个定时事件，当时间到达时，由事件处理器自动执行 key 的删除操作。**
+  * 内存可以尽快释放
+  * 但是占用 CPU
+* 惰性删除
+  * 访问 key 的时候才检查是否过期
+  * CPU 友好，内存不友好
+* 定期删除
+  * 每隔一定时间随机取出一批key进行检查
+  * 通过限制频率和数量平衡 CPU 和内存
+  * 难以确定执行删除的时间和频率
+
+
+
+redis 采用**惰性删除＋定期删除**
+
+redis 的惰性删除
+
+* 访问或者修改前，调用 expireNeed 函数检查
+* 如果过期了，同步/异步删除，返回 null。
+* 否则返回数据。
+
+redis 的定期删除
+
+* 在 Redis 中，默认**每秒进行 10 次**过期检查一次数据库，此配置可通过 Redis 的配置文件 redis.conf 进行配置，配置键为 hz 它的默认值是 hz 10。
+* 随机抽查 20 个
+* 流程
+  * 从过期字典抽取 20 个key
+  * 删除过期的 key
+  * 如果超过一定比例，重复进行删除流程。
+  * 有一个时间上限 （25ms）。
+
+#### 内存淘汰
+
+内存淘汰是 redis 内存达到上限时的淘汰策略。
+
+##### redis 内存淘汰策略
+
+* 不淘汰（默认）
+* 过期时间的数据中进行淘汰
+  * random
+  * ttl 淘汰过期时间最早的
+  * lru 最久没使用的
+  * lfu (4.0 之后)
+* 全部数据中进行淘汰
+
+
+
+
+
+redis的 lru
+
+* 没有使用传统 lru
+  * 链表消耗空间
+  * 链表操作耗时
+* 用的近似 LRU
+  * 在redis 对象结构体中添加一个额外的字段记录最后一次访问的时间
+  * 采用随机采样的方法
+    * 比如采五个，排除一个最早的
+
+
+
+redis 的 lfu
+
+复用了 lru 字段
+
+如果数据过去被访问多次，那么将来被访问的频率也更高
+
+
+
+lru 中 24 bits 记录访问时间戳
+
+lfu 中 头 16bits 存储访问时间戳，低 8 bits 存储访问频次（随时间衰减）
+
+* 访问 key 的时候先根据访问时间衰减 logc
+* 然后按照一定的概率增长 logc。 
+* 有两个参数调整衰减速度和增长速度。
+  * `lfu-decay-time` 用于调整 logc 的**衰减速度**，它是一个以分钟为单位的数值，默认值为1，lfu-decay-time 值越大，衰减越慢；
+  * `lfu-log-factor` 用于调整 logc 的**增长速度**，lfu-log-factor 值越大，logc 增长越慢。
+
+
+
+
+
+
+
+Redis 实现分布式锁
+
+分布式锁一般有以下几种实现方式：
+
+- 基于数据库
+  - 唯一索引
+- 基于Redis
+  - Lua 脚本
+    - setnx (set if not exist)
+    - expire 需要超时机制
+    - 两布加在一起 lua 脚本，使得两个步骤具有原子性
+  - set key value [ex seconds] [nx]
+- 基于zookeeper
+  - 分布式协调服务
+
+
+
+
+
+为什么要设置超时时间？
+
+redis 宕机，没有超时时间就会一直给锁
+
+客户端宕机，同理
+
+
+
+
+
+- S—Situation：事情是在什么情况下发生；
+- T—Task：你是如何明确你的任务的；
+- A—Action：针对这样的情况分析，你采用了什么行动方式；
+- R—Result：结果怎样，在这样的情况下你学习到了什么。
+
+
+
+
 

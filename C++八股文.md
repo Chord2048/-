@@ -2,7 +2,191 @@
 
 
 
+## c++ 新特性
+
+尾置返回值
+
+std::optional
+
+结构化绑定
+
+## STL
+
+#### RAII 是什么？
+
+resource acquire is initialization 资源获取即初始化
+
+将资源和对象的生命周期绑定。
+
+
+
+#### hash map 怎么实现
+
+![img](http://oss.interviewguide.cn/img/202205220035271.png)
+
+
+
+标准库用 vector 保存链表的头指针
+
+什么时候 rehash ？ 
+
+超过最大负载因子
+
+
+
+#### vector 扩容机制
+
+两倍或者 1.5 倍。
+
+均摊分析
+
+
+
+#### 容器删除和迭代器
+
+* 顺序容器 (vector deque)
+  * erase 迭代器不仅会使该迭代器失效，还会使后面的迭代器都失效。
+  * 但是 erase 会返回下一个有效的迭代器。
+* 关联容器 (map, set, multimap, multiset)
+  * erase 迭代器只是让该迭代器失效。
+  * erase 返回 void。
+  * 使用 earse(it++) 的方法删除迭代器。
+
+
+
+#### 迭代器的类型
+
+前向
+
+* unordered_set & unordered_map
+* forward_list
+
+双向
+
+* list
+* set / map
+
+随机访问
+
+* deque
+* vector
+
+**输入迭代器** InputIterator 支持逐个遍历和读取
+
+**输出迭代器** OutputIterator  支持逐个遍历和写入
+
+
+
+#### 迭代器失效
+
+以 vector 为例
+
+插入位置之后的迭代器失效。如果插入使得需要扩容时，所有迭代器失效。
+
+删除位置之后的迭代器失效。
+
+
+
+rehash 之后 unordered_map 的迭代器失效
+
+
+
+
+
+#### List 和 deque 的区别
+
+list 是一个双向环形链表
+
+deque 是一个双向开口的连续线性空间
+
+deque 和 vector
+
+* deque 允许常数时间对头部和尾部插入或者移除
+* deque **没有容量概念**。动态地以分段连续空间组合而成。没有所谓的空间保留功能？
+* deque 支持随机访问
+
+
+
+空间配置器 allocator deallocator
+
+两级配置器
+
+![img](http://oss.interviewguide.cn/img/202205220035104.png)
+
+![img](https://img2022.cnblogs.com/blog/741401/202205/741401-20220504160717545-639927952.png)
+
+* 第一级直接用 malloc， free 和 relloc
+* 第二级若区块小于 128 bytes 使用内存池
+  * free_list 是一个以 8 为容量公差的长度为 16 的链表，最后一个节点区块为 128 bytes。
+  * 不足时调用 refill 申请 [1, 20] 块，并且将多的块放入 freelist
+  * 内存池一个 njob 空间都不够的时候，用 malloc 向 OS 申请内存
+    * 申请不到，在后续的  freelist 里找
+    * 还是找不到，转到一级适配器，借助 oom 机制申请内存。
+* deallocate 先判断大小，若大于 128b 调用一级配置器，否则调用二级配置器。
+
+
+
+#### std::deque 的实现
+
+问题：vector 头部操作的效率特别差
+
+```c++
+class deque
+{
+    ...
+protected:
+    typedef pointer* map_pointer;//指向map指针的指针
+    map_pointer map;//指向map
+    size_type map_size;//map的大小
+public:
+    ...
+    iterator begin();
+    iterator end();
+    ...
+}
+
+// deque 迭代器维护连续的假象，迭代器需要知道:
+// 1. 自己是不是在缓冲区边缘
+// 2. 是不是在对头？上一个、下一个缓冲区在哪里？
+// 3. 因此，deque 迭代器，需要保存：
+// 		* first 缓冲区第一个元素		// 判断是不是第一个元素
+// 		* last 缓冲区最后一个元素的后面		// 判断后面还有没有元素
+// 		* 当前元素的指针
+// 		* map_node 的指针
+// 		* buffer_size 缓冲区能放的元素大小
+// 迭代器存四个变量
+// 一个是
+template<class T,...>
+struct __deque_iterator{
+    size_t buffer_size();
+    ...
+    T* cur;
+    T* first;
+    T* last;
+    map_pointer node;//map_pointer 等价于 T**
+}
+```
+
+
+
 ## 基础语法
+
+#### noexcept
+
+将函数标记为不会抛出异常，使用noexcept关键字标记的函数在它抛出异常时，编译器会直接调用名为"std::terminate"的方法，来**中断**程序的执行。
+
+析构函数通常会被默认加上 noexcept
+
+* 希望析构直接完成
+* 或者程序终止
+
+
+
+移动的时候加上 noexcept
+
+* 大多数容器调整大小用的**不会抛出异常的移动构造**，否则调用拷贝构造
+  * 因为在资源的移动过程中如果抛出了异常，那么那些正在被处理的**原始对象数据**可能因为异常而丢失
+  * 拷贝的时候原始数据是安全的
 
 #### 指针和引用的区别
 
@@ -45,7 +229,7 @@
    1. 栈由系统分配，快且没有碎片。
    2. 堆由程序员分配，慢且会有碎片。
 4. **取栈里的对象要快一些**，因为
-   1. 寄存器里由栈地址
+   1. 寄存器里有栈地址
    2. 获取堆的内容要先读指针的内容，再读地址的内容。
 
 #### new / delete 与 malloc / free 的异同
@@ -106,7 +290,7 @@ int main()
 
 * placement new
 
-  * ```
+  * ```c++
     void* operator new(size_t,void*);	// 不会分配内存，也就不会失败了
     void operator delete(void*,void*);
     ```
@@ -120,14 +304,14 @@ int main()
 
 #### malloc 和 free 是怎么实现的？
 
-用系统调用 brk, mmap, munmap 这些系统带哦用实现。
+用系统调用 brk, mmap, munmap 这些系统调用实现。
 
 * brk 是堆顶指针向高地址移动
 * mmap 是在进程的虚拟空间中（文件映射区）找一快空闲的虚拟内存。
-* 在第一次访问的时候，发生缺页中断，操作系统负责分配物理内存，然后简历虚拟内存和物理内存之间的映射关系。
+* 在第一次访问的时候，发生**缺页中断**，操作系统负责分配物理内存，然后简历虚拟内存和物理内存之间的映射关系。
 * malloc**大于128k的内存**，使用mmap分配内存，在堆和栈之间找一块空闲内存分配(对应独立内存，而且初始化为0)，
 * brk 分配的内存要等到高地址内存释放后才能释放，mmap可以单独释放。当高地址空间的空闲内存高于 128 k 执行内存紧缩。
-* 操作系统有一个记录空闲地址的链表，当操作系统收到程序的申请就会遍历链表找到第一个大于申请空间的接待你，然后删除这个节点。
+* 操作系统有一个记录**空闲地址的链表**，当操作系统收到程序的申请就会遍历链表找到第一个大于申请空间的节点，然后删除这个节点。
 
 brk 找K线链表的策略：
 
@@ -140,11 +324,13 @@ brk 找K线链表的策略：
 
 * 分离分散链表：每一种大小的空间简历独立的链表
 
-* 伙伴系统：空闲空间递归一分为二直到满足。伙伴系统的伙伴只有1位不同，比较好找。
+* **伙伴系统**：空闲空间递归一分为二直到满足。伙伴系统的伙伴只有1位不同，比较好找。
 
 
 
 #### malloc realloc calloc
+
+* realloc 用于扩容
 
 ```c++
 void* malloc(unsigned int num_size);
@@ -265,14 +451,19 @@ void realloc(void *p, size_t new_size); // 接收一个指针，在其后扩容�
 
 #### volatile mutable explicit
 
-* volaile
-  * 表示变量可以被编译器未知因素更改（OS, Thread, hardware）
+* volatile
+  
+  用 volatile 修饰的变量总是需要重新从地址读数据。
+  
+  * 表示变量**可以被编译器未知因素更改**（OS, Thread, hardware）
   * 编译器对访问该变量的代码不在进行优化
   * 总是重新从它所在的地址读取数据
   * **防止编译器把值放入寄存器**
+  
 * mutable
   * 意思是可变的，和 const 是反义词
   * 有些时候可能想在 const 函数里修改一些跟状态无关的数据成员
+  
 * explicit
   * 不能发生隐式类型转换
   * 只能加在构造函数声明上
@@ -387,6 +578,10 @@ void realloc(void *p, size_t new_size); // 接收一个指针，在其后扩容�
 
 #### 四种强制类型转换
 
+上行转换：派生变基类：安全
+
+下行转换：基类变派生：不安全
+
 * reinterpret_cast<typeid> (exp)
   * 直接转
 * const_cast<typeid> (exp)
@@ -461,6 +656,103 @@ void *memcpy(void *str1, const void *str2, size_t n);
 
 * bptr 虚继承的子类指向父类的指针/偏移量，可能会和 vptr 合并。
 
+链继承 C : B : A
+
+```c++
+                                                      C VTable（不完整)
+struct C                                              +------------+
+object                                                | RTTI for C |
+    0 - struct B                            +-------> +------------+
+    0 -   struct A                          |         |   C::f0()  |
+    0 -     vptr_A -------------------------+         +------------+
+    8 -     int ax                                    |   B::f1()  |
+   12 -   int bx                                      +------------+
+   16 - int cx                                        |   C::f2()  |
+sizeof(C): 24    align: 8                             +------------+
+```
+
+多继承
+
+C : A, B
+
+* 一个物理虚函数表，两个虚函数表指针和两个逻辑虚函数表。
+
+* 需要保存一个到虚函数顶部的 offset
+  * 在多继承中，由于**不同的基类起点可能处于不同的位置**，因此当需要将它们转化为实际类型时，**`this`指针的偏移量也不相同**。由于实际类型在编译时是未知的，这要求**偏移量必须能够在运行时获取**。
+  * 实体`offset_to_top`表示的就是实际类型起始地址到当前这个形式类型起始地址的偏移量。在向上动态转换到实际类型时，让**`this`指针加上这个偏移量**即可得到实际类型的地址。
+* thunk
+  * 为了弄清楚`Thunk`是什么，我们首先要注意到，如果一个类型`B` 的引用持有了实际类型为`C`的变量，这个引用的起始地址在`C+16`处。当它调用由类型`C`重写的函数`f1()`时，如果直接使用`this`指针调用`C::f1()`会由于`this`指针的地址多出`16`字节的偏移量导致错误。 因此在调用之前，`this`指针必须要被调整至正确的位置 。这里的`Thunk`起到的就是这个作用：**首先将`this` 指针调整到正确的位置，即减少`16`字节偏移量，然后再去调用函数`C::f1()`**。
+
+```c++
+                                                C Vtable (7 entities)
+                                                +--------------------+
+struct C                                        | offset_to_top (0)  |
+object                                          +--------------------+
+    0 - struct A (primary base)                 |     RTTI for C     |
+    0 -   vptr_A -----------------------------> +--------------------+       
+    8 -   int ax                                |       C::f0()      |
+   16 - struct B                                +--------------------+
+   16 -   vptr_B ----------------------+        |       C::f1()      |
+   24 -   int bx                       |        +--------------------+
+   28 - int cx                         |        | offset_to_top (-16)|
+sizeof(C): 32    align: 8              |        +--------------------+
+                                       |        |     RTTI for C     |
+                                       +------> +--------------------+
+                                                |    Thunk C::f1()   |
+                                                +--------------------+
+```
+
+
+
+虚继承
+
+* 虚基类偏移量 / 虚基类指针？ （**和编译器有关！**）
+* 虚基类由最后的子类实现
+  * 所以在最后的位置
+  * 虚基类中被子类重写的函数需要指向 vcall_offset
+    * 因为运行时才知道虚基类的 this 指针的位置。
+
+```text
+                                          D VTable
+                                          +---------------------+
+                                          |   vbase_offset(32)  |
+                                          +---------------------+
+struct D                                  |   offset_to_top(0)  |
+object                                    +---------------------+
+    0 - struct B (primary base)           |      RTTI for D     |
+    0 -   vptr_B  ----------------------> +---------------------+
+    8 -   int bx                          |       D::f0()       |
+   16 - struct C                          +---------------------+
+   16 -   vptr_C  ------------------+     |   vbase_offset(16)  |
+   24 -   int cx                    |     +---------------------+
+   28 - int dx                      |     |  offset_to_top(-16) |
+   32 - struct A (virtual base)     |     +---------------------+
+   32 -   vptr_A --------------+    |     |      RTTI for D     |
+   40 -   int ax               |    +---> +---------------------+
+sizeof(D): 48    align: 8      |          |       D::f0()       |
+                               |          +---------------------+
+                               |          |   vcall_offset(0)   |x--------+
+                               |          +---------------------+         |
+                               |          |   vcall_offset(-32) |o----+   |
+                               |          +---------------------+     |   |
+                               |          |  offset_to_top(-32) |     |   |
+                               |          +---------------------+     |   |
+                               |          |      RTTI for D     |     |   |
+                               +--------> +---------------------+     |   |
+                                          |     Thunk D::f0()   |o----+   |
+                                          +---------------------+         |
+                                          |       A::bar()      |x--------+
+                                          +---------------------+     
+```
+
+**虚基类位于派生类存储空间的末尾。**
+
+#### 虚函数指针和虚函数表的创建时机：
+
+虚函数表是在编译的过程创建
+
+虚函数指针在运行时创建
+
 
 
 #### 构造函数、析构函数、虚函数能不能是内联函数？
@@ -502,11 +794,11 @@ void *memcpy(void *str1, const void *str2, size_t n);
 
 #### 哪些函数不能是虚函数？
 
-1. 构造函数
-2. 静态函数
+1. **构造**函数
+2. **静态**函数
 3. 友元函数
-4. 普通函数
-5. 内联函数
+4. **普通**函数
+5. **内联**函数
 
 #### 模板类要写在一个文件里面
 
@@ -712,13 +1004,41 @@ pstack pid 看进程信息
 
 
 
-## 异步 Promise future packaged_task async 
+
+
+## C++ 并发编程
+
+#### unique_lock vs lock_guard vs scope_lock
+
+```c++
+// 只能传入 std::adopt_lock
+// 没有 lock，unlock 方法
+lock_guard (mutex_type& m, adopt_lock_t tag);
+
+// 
+unique_lock(mutex_type& m, defer_lock_t t); // 延迟上锁
+unique_lock(mutex_type& m, adopt_lock t);	
+unique_lock(mutex_type& m, try_to_lock t); // 非阻塞尝试上锁
+
+
+// 原子性地上多个锁，可以避免死锁
+std::lock(...)
+    
+// std::lock 的 c++ 17 版本
+std::scope_lock(mutex...)
+```
+
+
+
+
+
+### 异步 Promise future packaged_task async 
 
 ![std::future、std::promise、std::packaged_task 與 std::async 的關聯圖](https://zh-blog.logan.tw/static/images/2021/09/26/future-class-diagram.png)
 
 
 
-## C++协程
+### C++协程
 
 #### 关键字
 

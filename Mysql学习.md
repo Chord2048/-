@@ -50,7 +50,7 @@ t_order.ibd	表数据
 - 创建索引和维护索引要**耗费时间**，这种时间随着数据量的增加而增大；
 - 会降低表的**增删改的效率**，因为每次增删改索引，B+ 树为了维护索引有序性，都需要进行动态维护。
 
-#### 什么时候适用索引什么时候适用索引？
+#### 什么时候适用索引？
 
 - 字段有**唯一性**限制的，比如商品编码；
 - **经常用于 `WHERE`** 查询条件的字段，这样能够提高整个表的查询速度，如果查询条件不是一个字段，可以建立联合索引。
@@ -62,6 +62,8 @@ t_order.ibd	表数据
 - 字段中存在**大量重复数据**，不需要创建索引，比如性别字段，只有男女
 - 表**数据太少**的时候，不需要创建索引；
 - **经常更新的字段**不用创建索引
+  - 比如用户余额
+
 
 #### 有什么优化索引的方法？
 
@@ -147,6 +149,8 @@ InnoDB 引擎通过什么技术来保证事务的这四个特性的呢？
 
 #### 索引下推
 
+将 where 子句中的条件下推至索引层级。
+
 Explain : Use index condition
 
 联合索引第二个索引条件匹配才emit
@@ -192,7 +196,7 @@ select * from table where ? **for update** -- 排他锁
 
 ### 全局锁
 
-备份时会用上，使整个数据库仅可读
+**备份时会用上**，使整个数据库仅可读
 
 如果支持可重复度的隔离级别，可以加上 --single-transaction 开启事务进行一致性备份。
 
@@ -378,7 +382,7 @@ undo log 是一种用于**撤销回退**的日志。在事务没提交之前，M
 
 记录通过 roll_pointer 组成版本链，事务找链条中可见的记录。
 
-Undo_log 也需要持久化，需要 redo_log 记录其修改，buffee pool 里有 undo_log 页
+**Undo_log 也需要持久化，需要 redo_log 记录其修改，buffee pool 里有 undo_log 页**
 
 
 
@@ -391,9 +395,15 @@ ro do_log 和 undo_log 区别
 - redo log 记录了此次事务「**完成后**」的数据状态，记录的是更新**之后**的值；
 - undo log 记录了此次事务「**开始前**」的数据状态，记录的是更新**之前**的值；
 
-事务提交之前崩溃，先通过 undo_log 回滚事务，事务提交之后发生崩溃，重启后通过 redo_log 恢复事务。
+**事务提交之前**崩溃，先通过 undo_log 回滚事务，**事务提交之后**发生崩溃，重启后通过 redo_log 恢复事务。
 
 redo_log 是追加写的，写回磁盘是**顺序写**，要比直接随机写数据快得多。
+
+
+
+事务提交前后
+
+追加写 vs 随机写
 
 
 
@@ -424,7 +434,7 @@ innodb_flush_log_at_trx_commit 参数
 - 数据安全性：参数 1 > 参数 2 > 参数 0
 - 写入性能：参数 0 > 参数 2> 参数 1
 
-Redo_log file 以文件组形式组织，采用环形队列循环写的方式保存，如果空间满了（redo_log 对应的脏页没有写回磁盘），则 mysql 阻塞。
+Redo_log file 以文件组形式组织，采用**环形队列循环写**的方式保存，如果空间满了（redo_log 对应的脏页没有写回磁盘），则 mysql 阻塞。
 
 
 
@@ -443,8 +453,8 @@ redo_log 与 bin_log 区别：
 * **适用对象**：存储层 vs server层
 * **文件形式**
   * Bin_log 有三种格式
-    * statement 只保存逻辑日志，执行的 SQL 语句
-    * row 保存修改后的数据
+    * **statement** 只保存**逻辑日志**，执行的 SQL 语句
+    * **row** 保存**修改后的数据**
     * mixed 两种的混合
   * redo log 是物理日志，记录的是在某个数据页做了什么修改，比如对 XXX 表空间中的 YYY 数据页 ZZZ 偏移量的地方做了AAA 更新；
 * 用途：故障恢复 vs 主从复制和备份恢复
@@ -473,15 +483,21 @@ redo_log 与 bin_log 区别：
 
 
 
-#### 两阶段提交
+### 两阶段提交
 
 Redo_log 和 bin_log 要一致才能保证主从一致。
 
 
 
-Prepare -》 commit
+**Prepare -》 commit**
 
-事务提交 -〉 开启 XA 事务 -> 写 redo_log  写入 XID -> 写入XID到bin_log 刷盘 设置 re do_log 状态为 commit -> ok
+事务提交 -〉 开启 XA 事务 -> 写 redo_log  写入 XID -> 写入XID到bin_log 刷盘 设置 redo_log 状态为 commit -> ok
+
+![两阶段提交](https://cdn.xiaolincoding.com/gh/xiaolincoder/mysql/how_update/%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4.drawio.png?image_process=watermark,text_5YWs5LyX5Y-377ya5bCP5p6XY29kaW5n,type_ZnpsdHpoaw,x_10,y_10,g_se,size_20,color_0000CD,t_70,fill_0)
+
+
+
+
 
 ##### 问题
 
@@ -493,7 +509,43 @@ Prepare -》 commit
 
 
 
-**组提交**   MySQL 引入了 binlog 组提交（group commit）机制，当有多个事务提交的时候，会将多个 binlog 刷盘操作合并成一个，从而减少磁盘 I/O 的次数
+#### **组提交**   
+
+MySQL 引入了 binlog 组提交（group commit）机制，当有多个事务提交的时候，会将**多个 binlog 刷盘操作合并成一个**，从而减少磁盘 I/O 的次数
+
+* prepare 阶段不变
+* 将 commit 阶段分成三步
+  * flush 阶段，多个事务binlog 从 binlog cache 写到 page cache
+  * sync 阶段，写入磁盘
+  * commit 阶段，按顺序 commit
+
+每一步有一个队列。
+
+sync队列会等待一个 delay，或者等到达到 no_dalay_count 的时候发船。
+
+![img](https://cdn.xiaolincoding.com/gh/xiaolincoder/mysql/how_update/%E7%BB%84%E6%8F%90%E4%BA%A45.png)
+
+
+
+### 执行一条 update 日志怎么变？
+
+具体更新一条记录 `UPDATE t_user SET name = 'xiaolin' WHERE id = 1;` 的流程如下:
+
+1. 执行器负责具体执行，会调用存储引擎的接口，通过主键索引树搜索获取 id = 1 这一行记录：
+   - 如果 id=1 这一行所在的数据页本来就在 buffer pool 中，就直接返回给执行器更新；
+   - 如果记录不在 buffer pool，将数据页从磁盘读入到 buffer pool，返回记录给执行器。
+2. 执行器得到聚簇索引记录后，会看一下更新前的记录和更新后的记录是否一样：
+   - 如果一样的话就不进行后续更新流程；
+   - 如果不一样的话就把更新前的记录和更新后的记录都当作参数传给 InnoDB 层，让 InnoDB 真正的执行更新记录的操作；
+3. **开启事务**， InnoDB 层更新记录前，首先要**记录相应的 undo log**，因为这是更新操作，需要把被更新的列的旧值记下来，也就是要生成一条 undo log，undo log 会**写入 Buffer Pool 中的 Undo 页面**，不过在内存修改该 Undo 页面后，需要**记录对应的 redo log**。
+4. InnoDB 层开始更新记录，会先**更新内存（同时标记为脏页）**，然后将记录**写到 redo log** 里面，这个时候更新就算完成了。为了减少磁盘I/O，不会立即将脏页写入磁盘，后续由后台线程选择一个合适的时机将脏页写入到磁盘。这就是 **WAL 技术**，MySQL 的写操作并不是立刻写到磁盘上，而是先写 redo 日志，然后在合适的时间再将修改的行数据写到磁盘上。
+5. 至此，一条记录更新完了。
+6. 在一条更新语句**执行完成后**，然后**开始记录该语句对应的 binlog**，此时记录的 binlog 会被保存到 binlog cache，并没有刷新到硬盘上的 binlog 文件，在事务提交时才会统一将该事务运行过程中的所有 binlog 刷新到硬盘。
+7. 事务提交，剩下的就是「**两阶段提交**」的事情了，接下来就讲这个。
+
+
+
+
 
 
 

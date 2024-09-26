@@ -24,13 +24,43 @@ linux 程序安装目录/opt目录和/usr/local目录的区别 - 腾讯云
 - /opt 这个目录是一些大型软件的安装目录，或者是一些服务程序的安装目录。
 - **/usr/local命令下面的一些子目录往往都是被加入到PATH环境变量**中的（PATH中默认就有/usr/local/bin，可以使用echo $PATH查看），而/opt目录则没有在PATH环境变量中，这样安装在/usr/local目录下的软件就可以在命令行执行、启动。
 
+
+
 ## 进程管理
+
+进程线程
 
 ### 进程状态
 
 三态 or 五态
 
 ![进程五种状态的变迁](https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B/8-%E8%BF%9B%E7%A8%8B%E4%BA%94%E4%B8%AA%E7%8A%B6%E6%80%81.jpg)
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### 孤儿进程 僵尸进程
+
+孤儿进程
+
+* 父进程退出，子进程还在运行
+
+僵尸进程
+
+* 子进程退出，父进程没有wait，导致 task_struct 、task_info 无法回收
+* 解决：将父进程杀死，子进程编程孤儿进程
+* 由 init 进程托管这些孤儿进程。并且完成回收。
+
+
 
 ### 零拷贝
 

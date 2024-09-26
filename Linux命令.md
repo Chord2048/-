@@ -6,6 +6,59 @@
 
 
 
+## 面试遇到的
+
+##### 怎么看本机的外网 ip
+
+curl ipconfig.me
+
+
+
+
+
+## 系统资源
+
+#### top
+
+* VIRT 进程可访问的虚拟内存总量
+  * 包括进程使用的库、代码、数据
+  * mmap 映射
+  * 通常比实际使用的物理内存要大，因为包括了内存和文件系统缓存
+* RES 进程真正占用的内存
+  * 只有用到的库文件会包含在 RES 里。
+* SHR 表示 VIRT 中有多少是共享部分
+  * 包括库文件使用的内存
+  * 与其他进程共享的内存
+
+
+
+
+
+### vmstat
+
+* procs 进程信息
+  * r 运行和等待 cpu 时间片的进程数
+  * b block 的进程数
+* memory
+  * swpd 使用的虚拟内存大小
+  * free 可用的物理内存大小
+  * buff 物理内存用来缓存读写操作的buffer大小
+  * cache 物理内存用来缓存进程地址空间的 cache 大小
+* swap
+  * si 每秒从 swap 分区读入到 ram 的大小
+  * so 每秒从 ram 写到 swap 的大小
+* io
+  * bi
+  * bo
+* ststem
+  * in 每秒的中断数
+  * cs 每秒进行的上下文切换数
+* cpu
+  * us 用户进程使用 CPU 时间的百分比
+  * sy 内核进程占用 CPU 的百分比
+  * id idle cpu 空闲的百分比
+  * wa wait cpu等待 IO 的百分比
+
 ## 内存
 
 #### free
@@ -49,19 +102,39 @@ VMstat
 
 ![image-20240413170438126](C:\Users\19183\AppData\Roaming\Typora\typora-user-images\image-20240413170438126.png)
 
-网络
+
+
+
+
+## 网络
 
 tracert
 
 #### netstat -nlp
 
+#### Ss -ltnp
+
+当 socket 状态处于 `Established`时：
+
+- *Recv-Q* 表示 socket 缓冲区中还没有被应用程序读取的字节数；
+- *Send-Q* 表示 socket 缓冲区中还没有被远端主机确认的字节数；
+
+而当 socket 状态处于 `Listen` 时：
+
+- *Recv-Q* 表示**全连接队列**的长度；
+- *Send-Q* 表示全连接队列的**最大长度**；
 
 
-Ss -ltnp
 
-吞吐率 sar
+#### sar 查看网络吞吐
+
+- sar -n DEV，显示**网口**的统计数据；
+- sar -n EDEV，显示关于**网络错误**的统计数据；
+- sar -n TCP，显示 **TCP** 的统计数据
 
 
+
+ping 判断连通性
 
 
 
@@ -129,8 +202,76 @@ STAT 进程当前的状态
 
 
 
+aux 更详细一点，主要是有资源信息。
+
+
+
 #### $ps -ef  
 
 UID        PID  PPID  C STIME TTY          TIME CMD
 
 区别是 ps 可以看
+
+
+
+
+
+#### 查看线程
+
+1. ps -T
+
+```bash
+# ps -T -p <pid>
+
+  PID  SPID TTY          TIME CMD
+ 1234  1235 pts/1    00:00:00 java
+ 1234  1236 pts/1    00:00:00 java
+ 1234  1237 pts/1    00:00:00 java
+ 1234  1238 pts/1    00:00:00 java
+
+// SPID 是线程 ID
+```
+
+
+
+2. top -H 
+
+   1. 能看到实时性能
+      1. 用 PID 代表进程号
+      2. RES 非交换内存
+      3. VIRT 总虚拟内存
+      4. 共享内存
+      5. 
+
+   ```bash
+     PID USER      PR  NI    VIRT    RES    SHR S %CPU %MEM     TIME+ COMMAND
+    1235 user1     20   0 1625908  88900  21744 R 12.5  1.1   0:00.38 java
+    1236 user1     20   0 1625908  88900  21744 S  6.2  1.1   0:00.19 java
+    1237 user1     20   0 1625908  88900  21744 S  6.2  1.1   0:00.19 java
+    1238 user1     20   0 1625908  88900  21744 S  6.2  1.1   0:00.19 java
+   ```
+
+   
+
+#### 
+
+
+
+
+
+## CPU
+
+#### uptime 查看负载
+
+// 1 min, 5 min, 15 min 负载
+
+**用uptime得到的3个负载值除以逻辑CPU数，如果3个结果值均>1，则表示CPU过载。**
+
+
+
+
+
+```
+12:33:49 up  1:28,  1 user,  load average: 0.31, 0.25, 0.20
+```
+

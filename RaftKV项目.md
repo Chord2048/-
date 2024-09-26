@@ -26,6 +26,7 @@
     * leader 其他节点nextid，matchid
     * 全部服务器 commitid，appliedid
 * 新加的 TODO Snapshot
+* RPC 部分
 
 #### 初始化
 
@@ -40,7 +41,7 @@
 
 ##### ElectionTimeOutTiker 定时器设计
 
-1. 随机一个超时时间，减去距离上一次重置定时器的时间
+1. 随机一个超时时间 （目前是 300-500 ms 的正态分布），减去距离上一次重置定时器的时间
 2. 睡眠
 3. 如果睡眠期间没有重置定时器，发起选举
 
@@ -48,11 +49,11 @@
 
 ##### 开始选举
 
-1. 变为 candidate 任期自增，投票给自己
+1. 变为 candidate **任期自增**，投票给自己
 2. 记录票数 = 1
 3. 重置定时器
 4. 发布 request vote
-5. 开启线程调用 send_requestVote(request, reply)
+5. 开启线程调用 send_requestVote(request, reply) 
 
 ##### send_requestVote
 
@@ -75,11 +76,11 @@
 
 void Raft::RequestVote( const mprrpc::RequestVoteArgs *args, mprrpc::RequestVoteReply *reply)
 
-* 请求包含当前任期、参选号、最后的log任期和idx
-* 如果任期比自己小，说明出现网络分区，竞选者 outofdate。
+* 请求包含**当前任期**、**参选号**、**最后的log任期和idx**
+* 如果任期比自己小，说明出现网络分区，竞选者 out-of-date。
 * 如果任期比自己大，三变，！**重置投票**
 * 任期一致（三变后一致，或者没有三变就一致了）
-  * 检查日志 Candidate 的日志是不是比接收者的日志新
+  * 检查日志 Candidate 的**日志是不是比接收者的日志新**
     * candidate 最后日志的 term 更大
     * 或者 term 一样，index 更大
 
@@ -94,6 +95,8 @@ void Raft::RequestVote( const mprrpc::RequestVoteArgs *args, mprrpc::RequestVote
 #### 日志复制 | 心跳
 
 ![img](https://article-images.zsxq.com/Fqql9dbJTAJS5EA6pby_AIIw7mVo)
+
+25ms
 
 1. leaderHeartBeatTicker 超时调用 doHeartBeat
    1. **leaderHearBeatTicker**:负责查看是否该发送心跳了，如果该发起就执行doHeartBeat。
@@ -114,10 +117,10 @@ void Raft::RequestVote( const mprrpc::RequestVoteArgs *args, mprrpc::RequestVote
 AppendEntriesRPC 请求的内容包括：
 
 1. 当前leader的任期
-2. leader的id
+2. leader的id，用于 Client 的重定向
 3. **prevLogIndex** 添加下面log的前一个log的Index。正常情况下，follower的 lastIndex 应该等于prevLogIndex。
 4. **PrevLogTerm** 前一条log的term。和prevLogIndex一起用的，因为**可能过期的leader之前给这个follower发送过一些未apply的消息**，所以仅仅靠preLogIndex是无法确认leader之前的消息和follower当前最后的消息是一样的。**而 prevLogTerm 和 prevLogIndex 都一样，则状态肯定是一致的。**
-5. entries [] log：要新增加的log门，为了提升数据同步的效率，所以可能**一次性发送多条log**，这样提高了写的速度。
+5. entries [] log：要新增加的log们，为了提升数据同步的效率，所以可能**一次性发送多条log**，这样提高了写的速度。
 
 回复包括：
 
@@ -125,9 +128,7 @@ AppendEntriesRPC 请求的内容包括：
 2. true or false
    1. 如果**follower的term比自己小**，那么follower会更新自己的term为leader Term，并且返回leader Term，但是**会返回false**。
    2. 如果follower的term和自己一样大，也有可能**数据不够**而返回false，这个时候需要**递减leader的nextIndex和matchIndex**，最终实现数据一致性。
-3. 还有 nextindex 告诉 leader 需要哪条日志
-
-
+3. （option）还有 next index 告诉 leader 需要哪条日志
 
 
 
@@ -180,7 +181,7 @@ doheartBeat 开启多线程调用 SendAppendEntries
    1. appendNums (返回true的节点数) 大于一半，说明可以commit
    2. 重置 appendnums = 0 保证幂等性 （有很多线程在跑这个函数）
    3. **安全性检查**
-      1. 当前的term有日志提交，才会进行提交
+      1. **当前的term有日志提交**，才会进行提交
          1. raft无法保证之前term的Index是否提交
          2. 保证**领导人完备性**：当选领导人的节点**拥有之前被提交的所有log**，当然也可能有一些**没有被提交的**
       2. 也就是 被超过半数节点接受的最后一条 entries 的term 要等于当前的 term
@@ -318,7 +319,7 @@ Google Protocol Buffers (GPB)是Google内部使用的数据编码方式，旨在
 
 **Boost.Serialization**
 
-Boost.Serialization可以创建或重建程序中的等效结构，并保存为二进制数据、文本数据、XML或者有用户自定义的其他文件。该库具有以下吸引人的特性：
+Boost.Serialization可以创建或重建程序中的等效结构，并**保存为二进制数据、文本数据、XML或者有用户自定义**的其他文件。该库具有以下吸引人的特性：
 
 - 代码**可移植**（实现仅依赖于ANSI C++）。
 - 深度指针保存与恢复。
@@ -330,6 +331,43 @@ Boost.Serialization可以创建或重建程序中的等效结构，并保存为�
 
 - Google Protocol Buffers效率较高，但是**数据对象必须预先定义，并使用protoc编译**，适合要求效率，允许自定义类型的内部场合使用。
 - Boost.Serialization **使用灵活简单，而且支持标准C++容器**。
+
+
+
+
+
+#### Boost持久化实现
+
+```c++
+    class BoostPersistRaftNode
+    {
+    public:
+        friend class boost::serialization::access;		// 友元，这样子流才能访问
+        // When the class Archive corresponds to an output archive, the
+        // & operator is defined similar to <<.  Likewise, when the class Archive
+        // is a type of input archive the & operator is defined similar to >>.
+        template<class Archive>
+        void serialize(Archive & ar, const unsigned int version)
+        {
+            ar & m_currentTerm;					// 有点像 << 运算符
+            ar & m_votedFor;
+            ar & m_lastSnapshotIncludeIndex;
+            ar & m_lastSnapshotIncludeTerm;
+            ar & m_logs;
+        }
+        int m_currentTerm;
+        int m_votedFor;
+        int m_lastSnapshotIncludeIndex;
+        int m_lastSnapshotIncludeTerm;
+        std::vector<std::string> m_logs;
+        std::unordered_map<std::string,int> umap;
+    public:
+
+    };
+};
+```
+
+
 
 
 
@@ -501,9 +539,99 @@ ClientID + CommandID 标识。
 
 ### RPC怎么设计？
 
+看这个
+
+https://github.com/FeijiangHan/mprpc
+
+
+
 总体的特征: TCP 长连接,同步阻塞
 
+
+
+![img](https://article-images.zsxq.com/FuwAuCYet70BQWSI1h9Z8NB5rpCH)
+
+* 准备参数，设置调用方法。
+* 序列化。发送到接收方。
+* 接收方解析出调用参数，调用本地方法。
+* 序列化返回结果。
+* 发送方反序列化。
+
+序列化的数据：
+
+* 服务名
+* 方法名
+* 参数大小
+* 请求参数
+
+![img](https://article-images.zsxq.com/FoFDiWj3NaUnCWhG7II-F0Vo_Bcf)
+
+
+
+
+
+#### Protobuf 的使用
+
+raft 节点和 raft 节点之间
+
+massage 包括请求和回复，日志和快照的定义
+
+* **message** LogEntry  日志的结构
+  * command
+  * term
+  * index
+* **message** AppendEntriesArgs    lerder 给 follower 发的
+  * term
+  * leaderID	// 让 follower 知道现在的 leader，用来重新导向 client
+  * prevlogID
+  * prevlogterm
+  * logs
+  * commitID
+* **message** AppendEntriesReply   follower 回复给 leader 的
+* **message** Request vote  投票请求
+* **message** Request vote reply  投票回复
+* **message **install snapshot  类似于 AppendEntries
+  * term
+  * leaderid
+  * lastsnapshotid
+  * lastsnapshotterm
+  * data 字节流
+* **message** install snapshot reply
+  * term // 只要返回term
+
+
+
+**service raftrpc** 三个 rpc 方法
+
+* rpc **AppendEntries**
+* rpc **InstallSnapshot**
+* rpc **RequestVote**
+
+
+
+raft 节点之间通过KVserver 还有 **kvServerRPC**
+
+**service kvServerRPC**
+
+* rpc putappend
+* rpc get
+
+
+
+RpcHeader 服务名，方法名，参数大小
+
+```c++
+message RpcHeader
+{
+    bytes service_name = 1;
+    bytes method_name = 2;
+    uint32 args_size = 3; //这里虽然是uint32，但是protobuf编码的时候默认就是变长编码，可见：https://www.cnblogs.com/yangwenhuan/p/10328960.html
+}
+```
+
 ### RPC Channel
+
+实现远程的 callmethod 
 
 // TODO 他这个 socket 有点垃圾
 
@@ -532,6 +660,215 @@ class MprpcChannel : public google::protobuf::RpcChannel {
 };
 
 ```
+
+**Calll method** 进行序列化，发送，接受，反序列化。
+
+1. 完整的序列化：先用变长编码写 header size， 然后写header，然后写 args。
+
+2. 得到的 str 再通过 send 系统调用发出去。
+
+3. 然后调用 recv 系统调用接收响应值。
+
+4. 反序列化
+
+
+
+### RPC Provider
+
+kvserver 会开启一个线程跑 RPC_provider
+
+```c++
+// 框架提供的专门发布 rpc 服务的网络对象类
+class RpcProvider {
+ public:
+    
+    /**               发布和启动                **/
+  // 发布rpc方法
+  void NotifyService(google::protobuf::Service *service);
+  // 启动rpc服务节点，开始提供rpc远程网络调用服务
+  void Run(int nodeIndex, short port);
+
+ private:
+  // 组合EventLoop
+    /**            Event Loop 和 muduo tcp server        **/
+  muduo::net::EventLoop m_eventLoop;
+  std::shared_ptr<muduo::net::TcpServer> m_muduo_server;
+
+    /**            保存字符串到服务和方法的映射         **/
+  // service服务类型信息
+  struct ServiceInfo {
+    google::protobuf::Service *m_service;                                                     // 保存服务对象
+    std::unordered_map<std::string, const google::protobuf::MethodDescriptor *> m_methodMap;  // 保存服务方法
+  };
+  // 存储注册成功的服务对象和其服务方法的所有信息
+  std::unordered_map<std::string, ServiceInfo> m_serviceMap;
+
+    
+    /**                 回调函数          **/ 
+  // 新的socket连接回调
+  void OnConnection(const muduo::net::TcpConnectionPtr &);
+  // 已建立连接用户的读写事件回调
+  void OnMessage(const muduo::net::TcpConnectionPtr &, muduo::net::Buffer *, muduo::Timestamp);
+  // Closure的回调操作，用于序列化rpc的响应和网络发送
+  void SendRpcResponse(const muduo::net::TcpConnectionPtr &, google::protobuf::Message *);
+
+ public:
+  ~RpcProvider();
+};
+```
+
+
+
+被 send 发送到的节点会触发 RpcProvider::OnMessage
+
+负责解析请求，找出服务名方法名和参数，调用本地的任务。
+
+反序列化：
+
+1. 拿到头部长度
+2. 反序列化头部，获得参数长度，服务名，方法名
+3. 反序列化参数
+
+rpcprovider 查表，看有没有这个服务和方法
+
+
+
+```c++
+// 已建立连接用户的读写事件回调 如果远程有一个rpc服务的调用请求，那么OnMessage方法就会响应
+// 这里来的肯定是一个远程调用请求
+// 因此本函数需要：解析请求，根据服务名，方法名，参数，来调用service的来callmethod来调用本地的业务
+void RpcProvider::OnMessage(const muduo::net::TcpConnectionPtr &conn, muduo::net::Buffer *buffer, muduo::Timestamp) {
+  // 网络上接收的远程rpc调用请求的字符流    Login args
+  std::string recv_buf = buffer->retrieveAllAsString();
+
+  // 使用protobuf的CodedInputStream来解析数据流
+  google::protobuf::io::ArrayInputStream array_input(recv_buf.data(), recv_buf.size());
+  google::protobuf::io::CodedInputStream coded_input(&array_input);
+  uint32_t header_size{};
+
+  coded_input.ReadVarint32(&header_size);  // 解析header_size  (变长的)
+
+  // 根据header_size读取数据头的原始字符流，反序列化数据，得到rpc请求的详细信息
+  std::string rpc_header_str;
+  RPC::RpcHeader rpcHeader;
+  std::string service_name;
+  std::string method_name;
+
+  // 设置读取限制，不必担心数据读多
+  google::protobuf::io::CodedInputStream::Limit msg_limit = coded_input.PushLimit(header_size);
+  coded_input.ReadString(&rpc_header_str, header_size);
+  // 恢复之前的限制，以便安全地继续读取其他数据
+  coded_input.PopLimit(msg_limit);
+  uint32_t args_size{};
+  if (rpcHeader.ParseFromString(rpc_header_str)) {
+    // 数据头反序列化成功
+    service_name = rpcHeader.service_name();
+    method_name = rpcHeader.method_name();
+    args_size = rpcHeader.args_size();
+  } else {
+    // 数据头反序列化失败
+    std::cout << "rpc_header_str:" << rpc_header_str << " parse error!" << std::endl;
+    return;
+  }
+
+  // 获取rpc方法参数的字符流数据
+  std::string args_str;
+  // 直接读取args_size长度的字符串数据
+  bool read_args_success = coded_input.ReadString(&args_str, args_size);
+
+  if (!read_args_success) {
+    // 处理错误：参数数据读取失败
+    return;
+  }
+
+  // 获取service对象和method对象
+  auto it = m_serviceMap.find(service_name);
+  if (it == m_serviceMap.end()) {
+    std::cout << "服务：" << service_name << " is not exist!" << std::endl;
+    std::cout << "当前已经有的服务列表为:";
+    for (auto item : m_serviceMap) {
+      std::cout << item.first << " ";
+    }
+    std::cout << std::endl;
+    return;
+  }
+
+  auto mit = it->second.m_methodMap.find(method_name);
+  if (mit == it->second.m_methodMap.end()) {
+    std::cout << service_name << ":" << method_name << " is not exist!" << std::endl;
+    return;
+  }
+
+  google::protobuf::Service *service = it->second.m_service;       // 获取service对象  new UserService
+  const google::protobuf::MethodDescriptor *method = mit->second;  // 获取method对象  Login
+
+  // 生成rpc方法调用的请求request和响应response参数,由于是rpc的请求，因此请求需要通过request来序列化
+  google::protobuf::Message *request = service->GetRequestPrototype(method).New();
+  if (!request->ParseFromString(args_str)) {
+    std::cout << "request parse error, content:" << args_str << std::endl;
+    return;
+  }
+  google::protobuf::Message *response = service->GetResponsePrototype(method).New();
+
+  // 给下面的method方法的调用，绑定一个Closure的回调函数
+  // closure是执行完本地方法之后会发生的回调，因此需要完成序列化和反向发送请求的操作
+  google::protobuf::Closure *done =
+      google::protobuf::NewCallback<RpcProvider, const muduo::net::TcpConnectionPtr &, google::protobuf::Message *>(
+          this, &RpcProvider::SendRpcResponse, conn, response);
+
+  // 在框架上根据远端rpc请求，调用当前rpc节点上发布的方法
+  // new UserService().Login(controller, request, response, done)
+
+  /*
+  为什么下面这个service->CallMethod 要这么写？或者说为什么这么写就可以直接调用远程业务方法了
+  这个service在运行的时候会是注册的service
+  // 用户注册的service类 继承 .protoc生成的serviceRpc类 继承 google::protobuf::Service
+  // 用户注册的service类里面没有重写CallMethod方法，是 .protoc生成的serviceRpc类 里面重写了google::protobuf::Service中
+  的纯虚函数CallMethod，而 .protoc生成的serviceRpc类 会根据传入参数自动调取 生成的xx方法（如Login方法），
+  由于xx方法被 用户注册的service类 重写了，因此这个方法运行的时候会调用 用户注册的service类 的xx方法
+  真的是妙呀
+  */
+  //真正调用方法
+  service->CallMethod(method, nullptr, request, response, done);
+}
+```
+
+要点：
+
+1. 反序列化获得参数。
+2. 获得服务名和方法名，**从 map 里拿到对应的 service 类**
+   1. 这里是基类的指针
+   2. 实际上被继承并且重写了 service 里的方法。
+
+3. 通过本地注册的服务方法反序列化请求，生成回复。
+4. google::protobuf::Closure 回调函数的设置。回调函数负责序列化，发回响应。
+5. 调用 service->callmethod 就可以了
+   1. service 继承自 servicerpc 继承自 google::protobuf::service
+   2. servicerpc 重写了 callmethod，负责调用虚函数方法 do_xxx
+   3. 虚函数方法 do_xxx 被 service 类重写了，所以会调用我们注册的 service 类的 do_xxx 方法。
+   4. service 类的 do_xxx 方法在返回时调用定义好的回调函数，完成序列化和发送。
+
+servicerpc 重写了调用入口
+
+service 重写了具体的方法
+
+
+
+**所以这里的 RPC 是同步的。**
+
+并没有考虑：服务治理与服务发现、负载均衡，异步调用等功能。
+
+
+
+一些心得
+
+ 
+
+
+
+
+
+
 
 #### 日志压缩
 
@@ -803,7 +1140,7 @@ void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
 
 new 一个 KvServer 
 
-* 会启动一个线程，注册发服务，阻塞阻塞等待远程的 RPC 调用
+* 会启动一个线程，注册服务，阻塞等待远程的 RPC 调用
 * 创建并且初始化一个 Raft 类，Raft 类继承自 RaftPRC 并且重写了其中的 RPC 调用虚函数，同时开启了三个 ticker 线/协程。
 * 连接其他的节点
 * 初始化一个 KVDB
@@ -1249,9 +1586,54 @@ linux 网络编程
 
 ## 面试可能的问题
 
+#### 你这个东西是做什么的？有什么用？
+
+**提供分布式一致性服务。**
+
+基于 Raft 的分布式 KV 系统在实际应用中有很多用途。让我详细解释一下：
+
+1. **分布式存储**：KV（键值）存储通常用于存储大量的键值对，例如配置信息、用户会话、缓存数据等。将这些数据分布在多台服务器上，可以提高存储容量和性能。Raft 算法确保数据的一致性，使得分布式 KV 存储系统能够可靠地工作。
+2. **高可用性**：Raft 算法允许系统中的节点选举出一个领导者，其他节点作为跟随者。如果领导者节点失效，系统会自动选举新的领导者。这种机制确保了系统的高可用性，即使某些节点出现故障也不会影响整体服务。
+3. **分布式缓存**：KV 存储可以用作分布式缓存，例如 Redis 或 Memcached。Raft 算法保证了数据的一致性，使得缓存数据在不同节点之间同步，提高了缓存的可靠性。
+4. **分布式事务**：在分布式系统中，需要保证事务的一致性。Raft 算法的日志复制机制确保了数据的一致性，使得分布式事务能够正确执行。
+
+总之，基于 Raft 的分布式 KV 系统可以用于构建高性能、高可用性的分布式存储、缓存和事务处理系统。 如果你对具体的实现细节感兴趣，可以深入研究一下 Raft 算法的论文和相关资料。
+
+实际应用
+
+注册中心
+
+1. **etcd**：etcd 是一个分布式键值存储系统，用于配置管理和服务发现。它使用 Raft 算法来实现分布式一致性。
+2. **CockroachDB**：CockroachDB 是一个分布式 SQL 数据库，具有强一致性和高可用性。它使用 Raft 算法来管理数据复制和故障恢复。
+3. **TiDB**：TiDB 是一个分布式 NewSQL 数据库，支持水平扩展和**分布式事务**。它也使用 Raft 算法来实现数据一致性。
+
+
+
 ### RAFT各种场景和应对方法
 
 ##### 什么是网络分区，怎么解决
+
+
+
+##### 心跳时间设置
+
+根据实际场景设置。
+
+实际场景下设多少合适，**考虑 tcp 的 rtt**，不能因为tcp一次 **timeout** 就开始新的选举，再考虑**三次重传**和**慢启动**等因素。     
+
+**消息交互时间** < **心跳间隔时间** < **平均故障时间** 
+
+
+
+选举
+
+
+
+
+
+##### 分区里的 leader 怎么办？
+
+
 
 ##### 为什么xxx要持久化，为什么xxx不用持久化
 
@@ -1320,9 +1702,30 @@ get 180 gets/s
 
 ### 性能优化
 
+#### Raft 有什么性能瓶颈？
+
+* leader 瓶颈
+  * leader 负责接收请求，发送日志、心跳。可能负载较大
+* 网络分区
+  * 恢复后的合并和恢复开销大
+* 选举期间服务不可用
+* 复制有延迟，影响实时性能
+* 配置变更比较麻烦
+* 网络分区、节点故障的特殊情景要特殊处理
+* 性能调优：
+  * 心跳超时时间、选举超时时间、日志复制策略
+
 有空读一下这个
 
 https://juejin.cn/post/6906508138124574728#heading-1
+
+
+
+#### RPC 层面的优化
+
+RPC 合并
+
+
 
 #### 读优化
 
@@ -1362,7 +1765,7 @@ leader发送RPC的时候，会首先记录一个时间点 **start**，当系统�
 
 Lease Read 可以认为是 Read Index 的时间戳版本，额外依赖时间戳会为算法带来一些不确定性，如果时钟发生漂移会引发一系列问题，因此需要谨慎的进行配置。
 
-当leader持有lease时，leader认为此时其为合法的leader，因此可以直接将其*commit index*作为*read index*。后续的处理流程与**ReadIndex**相同。
+当leader持有lease时，leader认为此时其为合法的leader，因此可以**直接将其*commit index*作为*read index***。后续的处理流程与**ReadIndex**相同。
 
 
 
@@ -1399,6 +1802,8 @@ Lease Read 可以认为是 Read Index 的时间戳版本，额外依赖时间戳
 
 ### 测试相关
 
+
+
 ##### 有没有对性能进行过测试？用的什么工具？怎么测试的？
 
 **回答要点：** perf火焰图。
@@ -1410,6 +1815,52 @@ Lease Read 可以认为是 Read Index 的时间戳版本，额外依赖时间戳
 我这里给出一个初步的结果，如果只有一个客户端：**并发几十**，大部分的损耗在 RPC 这边。多个客户端的结果没有测试。
 
 现在的测试还比较简单，在五个 raft 集群上测。
+
+
+
+##### perf 火焰图生成步骤
+
+我们以perf为例，看一下flamegraph的使用方法：
+
+1、第一步
+
+$sudo perf **record** -e cpu-clock -g -p 28591
+
+-g 选项是告诉perf record额外记录函数的调用关系
+
+-e cpu-clock 指perf record监控的指标为cpu周期
+
+-p 指定需要record的进程pid
+
+
+
+Ctrl+c结束执行后，在当前目录下会生成采样数据perf.data.
+
+
+
+2、第二步
+
+用perf script工具对perf.data进行解析
+
+perf script -i perf.data &> perf.unfold
+
+
+
+3、第三步
+
+将perf.unfold中的符号进行折叠：
+
+\#./stackcollapse-perf.pl perf.unfold &> perf.folded
+
+
+
+4、最后生成svg图：
+
+./flamegraph.pl perf.folded > perf.svg
+
+
+
+
 
 ### 存储相关
 
